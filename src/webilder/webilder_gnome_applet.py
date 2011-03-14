@@ -55,6 +55,7 @@ class WebilderApplet(BaseApplet):
         self.applet_icon.set_from_pixbuf(self.scaled_icon)
         self.evtbox.add(self.applet_icon)
         self.applet.add(self.evtbox)
+        # ### Item 7 new in following list
         self.propxml = _("""
     <popup name="button3">
         <menuitem name="Item 1" verb="Browse" label="_Browse Collection" pixtype="stock"
@@ -63,6 +64,7 @@ pixname="gtk-directory"/>
 pixname="gtk-go-forward"/>
         <menuitem name="Item 3" verb="Leech" label="_Download Photos" pixtype="filename"
 pixname="%s"/>
+        <menuitem name="Item 7" verb="InfoCurrent" label="_Info on Current" pixtype="stock" pixname="gtk-dialog-info"/>
         <menuitem name="Item 6" verb="DeleteCurrent" label="_Delete Current" pixtype="stock" pixname="gtk-delete"/>
         <menuitem name="Item 4" verb="Pref" label="_Preferences" pixtype="stock"
 pixname="gtk-preferences"/>
@@ -79,12 +81,62 @@ pixname="gtk-preferences"/>
             ( "Browse", self.browse),
             ( "NextPhoto", self.next_photo),
             ( "Leech", self.leech),
-            ( "DeleteCurrent", self.delete_current)]
+            ( "DeleteCurrent", self.delete_current),
+            ( "InfoCurrent", self.info_current)] # ### "InfoCurrent" is new
         self.applet.setup_menu(self.propxml, self.verbs, None)
         self.applet.show_all()
         gobject.timeout_add(60*1000, self.timer_event)
         self.photo_browser = None
         self.download_dlg = None
+
+# ### NEW function start
+    def info_current(self, *_args):
+        """Opens the photo properties window."""
+        import os, time, commands
+        from webilder.webshots.wbz import parse_metadata
+        from webilder.uitricks import UITricks, open_browser
+
+        currentfile = commands.getoutput('/usr/bin/gconftool-2 -g /desktop/gnome/background/picture_filename')
+
+        if self.image_file == currentfile:
+            currentinfo = self.info_file
+            try:
+                fileobj = open(currentinfo, 'r')
+                infodata = parse_metadata(fileobj.read())
+                fileobj.close()
+            except IOError:
+                infodata = {}
+
+        else:
+            import getpass
+            wbtestpath = '/home/' + getpass.getuser() + '/.webilder/Collection/'
+            wbtest = currentfile.startswith(wbtestpath)
+            if wbtest == True:
+                currentinfo = os.path.splitext(currentfile)[0] + '.inf'
+                try:
+                    fileobj = open(currentinfo, 'r')
+                    infodata = parse_metadata(fileobj.read())
+                    fileobj.close()
+                except IOError:
+                    infodata = {}
+            else:
+                try:
+                    infodata = parse_metadata("url=--\ncredit=--\ntitle=--\ntags=--\nalbumTitle=--\n")
+                except IOError:
+                    infodata = {}
+
+        applet_win = UITricks('ui/webilder.glade', 'PhotoPropertiesDialog')
+        applet_win.title.set_markup('<b>%s</b>' % infodata['title'])
+        applet_win.album.set_markup(infodata['albumTitle'])
+        applet_win.file.set_text(currentfile)
+        applet_win.tags.set_text(infodata['tags'])
+        applet_win.size.set_text(_('%.1f KB') % (os.path.getsize(currentfile) / 1024.0))
+        applet_win.date.set_text(time.strftime('%c', time.localtime(os.path.getctime(currentfile))))
+        applet_win.url.set_text(infodata['url'])
+
+        applet_win.closebutton.connect('clicked', lambda *args: applet_win.destroy())
+        applet_win.show()
+# ### NEW function end
 
     def set_tooltip(self, text):
         self.tooltips.enable()
